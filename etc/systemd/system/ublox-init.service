@@ -1,0 +1,15 @@
+[Unit]
+Description=u-blox initialisation
+Before=gpsd.service
+Before=ntp.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PARAMS=-v -a -B 115200 --configure_for_timing"
+EnvironmentFile=-/etc/default/gpsctl
+ExecStart=/bin/bash -c 'for i in 1 2 3; do /usr/local/bin/gpsctl ${PARAMS} && exit 0; [ $i -lt 3 ] && sleep 15; done; exit 1'
+
+[Install]
+WantedBy=multi-user.target
