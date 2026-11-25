@@ -5,8 +5,8 @@
         against both programs and a fake receiver, with identical output and identical frames sent), and the main
         options were run on a real u-blox M8.
     Differences from the C program: the --test (PPS pin) option is not ported (the C program no longer has it);
-        --reset is not retried after the port hangs up (the C program retries every action once); the Rust port reads
-        its configuration from /etc/gpsctl.conf, or from the file named by GPSCTL_CONF.
+        --reset is not retried after the port hangs up (the C program retries every action once); the environment
+        variable GPSCTL_CONF can name a different configuration file than /etc/gpsctl.conf.
     build.sh builds the aarch64 (64-bit Raspberry Pi) binary; the README lists the Debian prerequisites.
 
 Everything below is the Changelog of the C program (https://github.com/philrandal/gpsctl), which this port follows.
