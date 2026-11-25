@@ -102,7 +102,7 @@ pub fn decode(body: &[u8]) -> Result<Fix, BadBodySize> {
         date_valid: bit(body[11], 0),
         time_valid: bit(body[11], 1),
         time_resolved: bit(body[11], 2),
-        fix_is_3d: body[20] == 3,
+        fix_is_3d: body[20] == 3 || body[20] == 4, // 4 = GNSS + dead reckoning, still a 3D fix
         fix_valid: bit(body[21], 0),
         number_of_satellites_used: body[23] as u32,
         latitude_deg: i32_(28) as f64 * 1e-7,
@@ -138,6 +138,16 @@ mod tests {
             f.height_above_sea_level_mm, f.height_accuracy_mm, f.horizontal_accuracy_mm, f.ground_speed_mm_s,
             f.ground_speed_accuracy_mm_s, f.heading_deg, f.heading_accuracy_deg
         )
+    }
+
+    #[test]
+    fn fix_type_3_and_4_are_3d_but_not_2_or_5() {
+        // 4 is GNSS + dead reckoning (still a 3D fix), as in the C program since 2026-11-25; 2 is 2D, 5 time only
+        for (fix_type, want) in [(0u8, false), (1, false), (2, false), (3, true), (4, true), (5, false)] {
+            let mut body = vec![0u8; 92];
+            body[20] = fix_type;
+            assert_eq!(decode(&body).unwrap().fix_is_3d, want, "fixType {fix_type}");
+        }
     }
 
     #[test]

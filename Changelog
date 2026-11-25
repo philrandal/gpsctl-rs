@@ -1,3 +1,12 @@
+Unreleased - Phil Randal and Claude (ported from the C program's unreleased changes)
+    $*00 can declare false NMEA sync
+    fixedAltVarM2 decoded as signed
+    Negative --echo seconds accepted
+    fix_is_3d excludes fixType 4
+    Unconsumed command-line words are silently ignored
+    Fix the unexpected-argument check: it never fired
+    The Rust port has all of the above; "gpsctl -e 5" and other leftover words are now refused as in C
+
 2026-11-25 - Phil Randal and Claude - Release 1.42 (first release of the Rust port)
     Rust conversion of gpsctl: a std-only Rust library and gpsctl program with the same options, configuration file,
         output, JSON and exit status as release 1.42 of the C program (the version it reports).  Its behaviour was

@@ -61,13 +61,15 @@ fn hex2int(c: u8) -> Option<u8> {
 pub fn nmea_sync<T: Transport>(u: &mut Ubx<T>, max_ms: u64) -> Result<bool, String> {
     let start = u.t.now();
     u.flush_rx().map_err(|e| format!("could not flush receiver prior to synchronization: {e}"))?;
-    let (mut in_line, mut last, mut ck) = (false, [0u8; 3], 0u8);
+    let (mut in_line, mut last, mut ck, mut line_len) = (false, [0u8; 3], 0u8, 0usize);
     while u.t.now().saturating_sub(start) < ms(max_ms) {
         let left = ms(max_ms).saturating_sub(u.t.now().saturating_sub(start));
         let Some(c) = u.t.read_byte(left)? else { return Ok(false) };
         if in_line {
             if c == b'\r' || c == b'\n' {
-                if last[0] == b'*' {
+                // a real sentence has a talker and a sentence formatter ("GPGGA", say) before the "*HH"; without this
+                // test an empty "$*00" line passes, because its checksum and the "00" are both zero
+                if last[0] == b'*' && line_len >= 8 {
                     if let (Some(hi), Some(lo)) = (hex2int(last[1]), hex2int(last[2])) {
                         // the checksum covers everything between '$' and '*', so the '*XX' just seen is taken back out
                         let calc = ck ^ last[0] ^ last[1] ^ last[2];
@@ -79,11 +81,13 @@ pub fn nmea_sync<T: Transport>(u: &mut Ubx<T>, max_ms: u64) -> Result<bool, Stri
                 in_line = false;
             } else {
                 ck ^= c;
+                line_len += 1;
                 last = [last[1], last[2], c];
             }
         } else if c == b'$' {
             in_line = true;
             ck = 0;
+            line_len = 0;
             last = [0; 3];
         }
     }

@@ -129,6 +129,10 @@ S("too many v", P + ["-vvv"]); S("long with arg on flag", P + ["--quiet=5"]); S(
 S("nmea missing", P + ["-n"]); S("echo not int", P + ["-eabc"]); S("query attached", P + ["-Qversion"]); S("cluster", P + ["-vjQ", "version"])
 S("repeat option", P + ["-b", "9600", "-b", "9600"]); S("repeat json", P + ["-Q", "fix", "-j", "-j", "-j", "-j"])
 S("double dash", P + ["--", "-Q", "version"]); S("non-option args", P + ["foo", "-Q", "version", "bar"])
+S("extra word", P + ["foo"]); S("echo with space", P + ["-e", "1"]); S("words after dash dash", P + ["foo", "--", "bar"])
+S("extra word with query", P + ["-Q", "version", "foo"], ); S("extra word vv", P + ["-vv", "-Q", "version", "foo"])
+S("extra word and conflict", P + ["foo", "-q", "-v"]); S("version with extra", P + ["-V", "foo"]); S("help with extra", P + ["--help", "foo"])
+S("negative echo", P + ["--echo=-1"]); S("negative echo vv", P + ["-vv", "--echo=-1"]); S("negative echo short", P + ["-e=-5"])
 S("not a terminal", ["-p", "/dev/null"]); S("no such port", ["-p", "/dev/nonexistent"])
 
 fails = 0; n = 0

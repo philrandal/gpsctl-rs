@@ -235,8 +235,13 @@ fn find_long(text: &str) -> Option<usize> {
     DEFS.iter().position(|d| !d.long.is_empty() && text.starts_with(d.long))
 }
 
-fn parse_args(args: &[String]) -> Result<Vec<Record>, Chain> {
+/// Returns the option records and the first command-line word that option processing did not use (None if there is
+/// none).  slOptions moves each unrecognised word to the end of the argument list, but anything after "--" stays where
+/// it is, so the words after "--" come before the moved ones.
+fn parse_args(args: &[String]) -> Result<(Vec<Record>, Option<String>), Chain> {
     let mut recs: Vec<Record> = Vec::new();
+    let mut moved: Vec<String> = Vec::new();
+    let mut after_dashes: Vec<String> = Vec::new();
     let mut i = 1;
     while i < args.len() {
         let cur = args[i].as_str();
@@ -246,6 +251,7 @@ fn parse_args(args: &[String]) -> Result<Vec<Record>, Chain> {
         } else if i == 1 && cur == "--?" {
             // (debug tracing in C; nothing to trace here)
         } else if cur == "--" {
+            after_dashes = args[i + 1..].to_vec();
             break;
         } else if cur.starts_with('-') {
             if cur.len() > 2 && cur.as_bytes()[1] == b'-' {
@@ -288,8 +294,10 @@ fn parse_args(args: &[String]) -> Result<Vec<Record>, Chain> {
                     }
                 }
             }
+        } else {
+            // a non-option argument: slOptions moves it to the end, and gpsctl refuses it in the constraint phase
+            moved.push(cur.to_string());
         }
-        // (anything else is a non-option argument: slOptions moves it to the end and gpsctl ignores them)
         i += 1;
     }
     if let Some(r) = recs.last() {
@@ -297,7 +305,8 @@ fn parse_args(args: &[String]) -> Result<Vec<Record>, Chain> {
             return Err(parse_error(format!("option [{}] missing required argument", option_name(&DEFS[r.def]))));
         }
     }
-    Ok(recs)
+    let first_unused = after_dashes.into_iter().chain(moved).next();
+    Ok((recs, first_unused))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -846,7 +855,7 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn process(s: &mut Session, args: &[String]) -> Result<(), Chain> {
-    let recs = parse_args(args)?;
+    let (recs, first_unused) = parse_args(args)?;
     let present = |id: Id| recs.iter().any(|r| DEFS[r.def].id == id);
 
     // help, version and usage only inform: run them, and nothing else
@@ -923,7 +932,11 @@ fn process(s: &mut Session, args: &[String]) -> Result<(), Chain> {
         }
     }
 
-    // constraints
+    // constraints: gpsctl takes no positional arguments, so a word left over means the command line was not understood
+    // ("-e 5" is one: the optional argument must be attached, "-e5" or "--echo=5")
+    if let Some(extra) = first_unused {
+        return Err(constraint_error(&format!("unexpected command-line argument \"{extra}\"")));
+    }
     for (di, d) in DEFS.iter().enumerate() {
         if !recs.iter().any(|r| r.def == di) { continue; }
         let bad = match d.id {
@@ -931,6 +944,7 @@ fn process(s: &mut Session, args: &[String]) -> Result<(), Chain> {
             Id::Json if !present(Id::Query) => Some("-j, --json may only be specified if -Q, --query is also specified"),
             Id::Baud if present(Id::Autobaud) => Some("-b, --baud may only be specified if -a, --autobaud is NOT specified"),
             Id::MinBaud if !present(Id::Autobaud) => Some("-M, --minbaud may only be specified if -a, --autobaud is also specified"),
+            Id::Echo if s.cd.echo_seconds < 0 => Some("-e, --echo may not be given a negative number of seconds"),
             Id::Verbose if present(Id::Quiet) => Some("-v, --verbosity d may only be specified if -q, --quiet is NOT specified"),
             _ => None,
         };

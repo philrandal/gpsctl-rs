@@ -166,7 +166,7 @@ pub fn get_config<T: Transport>(u: &mut Ubx<T>) -> Result<ReceiverConfig, Chain>
     c.model = b[2];
     c.mode = b[3];
     c.fixed_alt_m = 0.01 * i32_at(&b, 4) as f64;
-    c.fixed_alt_var_m2 = 0.0001 * i32_at(&b, 8) as f64;
+    c.fixed_alt_var_m2 = 0.0001 * u32_at(&b, 8) as f64; // U4 in the message
     c.min_elev_deg = b[12] as i8;
     c.p_dop = 0.1 * u16_at(&b, 14) as f64;
     c.t_dop = 0.1 * u16_at(&b, 16) as f64;

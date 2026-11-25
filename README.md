@@ -297,7 +297,7 @@ An example which configures for Galileo satellites:
     User configurable delay = 0
 
 ## Status and testing
-See [docs/STATUS.md](docs/STATUS.md): 75 unit tests; a comparison against the real C program in 101 command-line
+See [docs/STATUS.md](docs/STATUS.md): 76 unit tests; a comparison against the real C program in 112 command-line
 scenarios (identical output and identical frames sent to a fake receiver); the main options run on a real u-blox M8
 (protocol 18) on a Raspberry Pi UART. Not yet run on real hardware: the cross-compile step of `build.sh`, the
 listen-first autobaud pass, UTC standards 5/8/9. The [Changelog](Changelog) includes the C program's history.
