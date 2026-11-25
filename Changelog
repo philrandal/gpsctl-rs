@@ -1,0 +1,316 @@
+2026-11-25 - Phil Randal and Claude - Release 1.42 (first release of the Rust port)
+    Rust conversion of gpsctl: a std-only Rust library and gpsctl program with the same options, configuration file,
+        output, JSON and exit status as release 1.42 of the C program (the version it reports).  Its behaviour was
+        checked against the real C code (golden data from the C functions, and 101 command-line scenarios run
+        against both programs and a fake receiver, with identical output and identical frames sent), and the main
+        options were run on a real u-blox M8.
+    Differences from the C program: the --test (PPS pin) option is not ported (the C program no longer has it);
+        --reset is not retried after the port hangs up (the C program retries every action once); the Rust port reads
+        its configuration from /etc/gpsctl.conf, or from the file named by GPSCTL_CONF.
+    build.sh builds the aarch64 (64-bit Raspberry Pi) binary; the README lists the Debian prerequisites.
+
+Everything below is the Changelog of the C program (https://github.com/philrandal/gpsctl), which this port follows.
+The Rust port's release numbers follow the C release it matches.
+
+2026-11-25 - Phil Randal, DeepSeek and Claude - Release 1.42
+    Removed the commented-out PPS signal test (--test) and its wiringPi references: wiringPi is deprecated and the option was already disabled
+    CFG-NAV5 integer bounds (min elevation ±90, fix mode 1–3, dynamic model 0/2–10, Bike=10, excludes 11–13)
+    getConfigUTCStandard() accepts {0,3,5,6,7,8,9}; EU/NPLI/NICT names; local enum in ublox.c
+        (the check itself was missing from the code until now: anything else is reported and the default, USNO, used)
+    Quiet mode reports the real failure cause instead of "Errors occurred!"; option errors say invalid option "--bogus"
+    When querying configuration, NMEA version 4.11 is now displayed correctly as 4.11 in both text and JSON outputs (it
+        previously printed as 4.b in text and 5.1 in JSON due to 0x4B hex encoding).
+    safeMalloc() safely handles size 0 requests without failing on platforms where malloc(0) returns NULL, and qsort()
+        is guarded against zero-satellite queries.
+    The gpsctl:sync method configuration option now requires at least syncASCII (1), preventing syncNone (0) from being
+        accepted and failing during autobaud/sync.
+    Plugged several memory leaks: freed slReturn records in sendUbxAckedMsg(), autoBaudRate(), and actionAutoBaud(); cleared
+        dangling abResp pointer in actionAutoBaud(); and freed the iniparser dictionary before program exit.
+    waitForQuietLine() stops with "serial port hung up" when read() returns zero (it used to spin on a hung-up port for up to
+        a second).  After a hardware restart that gets no answer, the error now suggests the -a option (the receiver may
+        have come back at its saved baud rate), and the factory reset sets the client's baud rate from the one constant.
+    The NMEA version setting is checked against the versions u-blox defines (2.1, 2.3, 4.0, 4.1 or 4.10, 4.11; or the
+        digits 21, 23, 40, 41, 410, 411): anything else is reported and the default (4.1) used.  4.11 is now sent as 0x4B (it
+        used to be sent as 0x41, i.e. 4.1).  Decimal settings (fixed altitude and its variance, DoP masks) are range-checked
+        against the size of the field they go in, and the scaling no longer overflows an int.
+    --save_config help text and README now say what is saved where: battery-backed RAM, and flash, EEPROM and SPI flash if
+        the module has them (the save has used device mask 0x17 since 1.40).
+    GPSCTL_TRACE=1 in the environment prints every byte sent to and received from the serial port (received bytes grouped
+        32 to a line), with receive-buffer flushes, host baud changes and quiet-line waits, and times, to stderr.
+    Autobaud (UBX sync method) now listens before it polls.  Every poll sent at a wrong baud rate is a burst of frame
+        errors in the receiver, and a u-blox that sees more than 100 switches its UART receiver off ("UART RX was
+        disabled") for a few minutes - deaf even at the right rate, so autobaud failed outright.  The first pass now
+        sends nothing, listening at each rate (1.5 s) for the receiver's own NMEA; only the rate where valid NMEA is
+        heard gets a UBX poll.  A receiver with NMEA off falls back to the old poll-at-every-rate pass, which now
+        starts at most two polls per rate (it used to start a third that couldn't finish).
+    After the host's baud rate changes (autobaud, -b, --factory_reset), discard input until the line has been quiet for 20 ms
+        (at most 1 s) before the first command.  A UART can't find character boundaries while a busy receiver keeps
+        sending (the u-blox defaults nearly fill a 9600 baud line), so the reply to a poll sent at once came back with its
+        B5 sync byte corrupted, and autobaud could fail on the right rate.
+
+2026-11-22 - Phil Randal, DeepSeek, and Claude - Release 1.41
+    New option --factory_reset=yes: restores the receiver's factory defaults 
+        (CFG-CFG clearing and loading all sections, so the saved configuration
+        is erased too), follows the receiver back to its default 9600 baud, then 
+        restarts it (hot-start hardware reset).  The word yes is required, so the
+        option can't be given by accident.
+    More fixes in ublox.c
+
+2026-11-22 - Phil Randal and Claude - Release 1.40
+    GNSS change: UBX-CFG-GNSS is sent only if it changes something (each one makes the receiver 
+        restart its GNSS engine).
+    After a CFG-GNSS, wait 0.5 s before the next command, as u-blox requires.
+    If Galileo is enabled, the GNSS change is followed by what u-blox requires: 
+        save the configuration (CFG-CFG, 0x041B, so that the reset does not discard 
+        it), a hardware reset (CFG-RST, hot start), then wait for the receiver to answer again.
+
+2026-11-20 - Phil Randal and Claude - Release 1.39
+    Oversized UBX length: treated as noise instead of waiting for up to 65535 bytes.
+    Synchronizer wait: longer wait in the autobaud sync at slow baud rates.
+    Poll and ACK waits: the same extra allowance for every poll and ACK wait.
+    Config values: strict decimal reading, with the units in the shipped configs moved into comments.
+      NOTE: this breaks existing configs - please adjust your gpsctl.conf to put comment symbols 
+          after numeric values
+
+2026-11-20 - Phil Randal and Claude - Release 1.38
+    Refuse a shared serial port and cross-check autobaud
+
+2026-11-19 - Phil Randal and Claude - Release 1.37
+    Check the verbosity and sync method settings too
+    Report integer settings that aren't numbers
+    Check every narrowing integer setting against the field it fills
+    Reject out-of-range GNSS channel counts instead of wrapping them
+    Warn when a yes/no configuration value isn't recognised
+
+2026-11-16 - Phil Randal and Claude and DeepSeek - Release 1.36
+    Fix strict warnings
+    flush after tcsetattr in setTermOptionsBaud/setTermOptions
+    ubxAckWait(..., max_ms), 250 ms post-change drain, skip redundant CFG-PRT write
+    probe which rate the receiver answers on after a failed change
+
+2026-11-16 - Phil Randal and Claude - Release 1.35
+    sl_options: compare unsigned with unsigned in addOptionRecord
+    Pass unsigned char values to the ctype functions
+    sl_options: drop the impossible maxCount < 0 check
+    sl_options: fix memory leaks in the help output and warning results
+    sl_general: make sleep_ns sleep for a second or more, and through signals
+    sl_serial: set VMIN and VTIME in setTermOptions
+    gpsctl: stop the --query option definition shadowing the queryDef type
+    gpsctl: make cmpSatellite static and const-correct
+    gpsctl: reject empty and out-of-range integer arguments
+    gpsctl: treat an empty yes/no argument as no, and document 'on'
+    gpsctl: flush echoed NMEA output a line at a time
+    ublox: only change the UART1 rate in ubxEnableNMEAMsg
+    ublox: don't truncate the CFG-GNSS block limit to 8 bits
+    ublox: only apply the NAV-PVT time correction to a valid time
+    ublox: resync after a bad UBX frame instead of failing on it
+    ublox: validate CFG-NMEA reply size in ubxConfigNMEAVersion
+    ublox: round scaled NAV5 config values instead of truncating
+
+2026-11-15 - Phil Randal and OpenCode / DeepSeek V4.1 Flash Free - Release 1.34
+    Fix auto-baudrate detection logic
+
+2026-11-15 - Phil Randal and OpenCode / DeepSeek V4.1 Flash Free - Release 1.33
+    Wait for every byte of a message to be sent, rather than giving up on a partial write.
+    Report a hung-up serial port as such, rather than as a failure to write.
+    Check the size of each configuration reply before using it, so a short reply is reported
+        rather than decoded as a zeroed configuration.
+    Reopen the port during recovery only when it really works again, not merely when it opens.
+    Fix a memory leak when an option name is generated.
+    Widen the PRr column in the satellite table, which a negative residual pushed out of line.
+    Run gpsctl up to three times at boot, 15 seconds apart, and log the errors.
+
+2026-11-15 - Phil Randal and Claude - Release 1.31
+    Add retry if serial port fails
+    Another memory leak patched
+
+2026-11-13 - Phil Randal and OpenCode / DeepSeek V4.1 Flash Free - Release 1.30
+    More sync error fixes
+
+2026-11-13 - Phil Randal and OpenCode / DeepSeek V4.1 Flash Free - Release 1.29
+    Better fix for sync errors
+
+2026-11-13 - Phil Randal and Claude - Release 1.28
+    Make --help, --version and -U work without a serial port. 
+       They now exit 0 on a machine with no /dev/serial0. Before, they exited 1.
+    Fix frame sync when a stray B5 comes right before a real frame (B5 B5 62 …).
+        That frame is now received; before, it was dropped.
+    Zero-fill new buffers in create_slBuffer, so no uninitialised bytes get through.
+    Do the currentTimeMs arithmetic in 64 bits. Affects 32-bit architectures only.
+    Clear the stale checksum tail when a new $ starts.
+        Before, a bad-checksum line followed by an empty line could report the NMEA
+        synchronizer as locked. Valid sentences still lock.
+    Check the NAV-SAT body size and clamps the satellite count to what the message actually holds.
+        A body shorter than 8 bytes is now rejected. Before, a claimed count of 200 with 2 
+        satellites present was accepted.
+    Fix minor error message bugs.
+    Retry a timed-out UBX sync twice, so three attempts in all.
+
+2026-11-13 - Phil Randal and Claude and OpenCode / DeepSeek V4.1 Flash Free - Release 1.27
+    Various bug fixes
+    Fix NMEA initialisation
+    Optimise serial reads using poll() (thanks, Claude)
+   
+2026-11-12 - Phil Randal and Claude - Release 1.24
+    Various double free, buffer overflow, null pointer dereference fixes, etc via Claude AI
+    Fix ubxReset parameters (Claude AI)
+
+2026-11-11 - Phil Randal and Claude - Release 1.23
+    Fix null pointer dereferences and potential heap overflow (thanks, Claude)
+    Refactor clientData references to use consistent pointer name 'cd' instead of 'clientData'
+
+2026-10-27 - Phil Randal - Release 1.22
+    Security fix for cjson.c
+
+2026-10-12 - Phil Randal - Release 1.21
+    Rebased iniparser to 4.3.2
+
+2026-09-24 - Phil Randal - Release 1.20
+    Rebased iniparser to 4.3.0
+
+2026-01-05 - Phil Randal
+    Updated cJSON to version 1.7.19
+
+2024-05-17 - Phil Randal
+    Updated cJSON to version 1.7.18
+
+2024-03-14 - Phil Randal
+    Synchronise iniparser with upstream plus added boolean on/off values
+
+2024-02-28 - Phil Randal
+    Updated cJSON to version 1.7.17
+    Start merging upstream iniparser patches
+
+2023-10-17 - Phil Randal - Release 1.19
+    Change default serial device from /dev/serial0 to /dev/ttyAMA0
+
+2023-09-08 - Phil Randal
+    Updated cJSON to version 1.7.16
+
+2023-07-29 - Phil Randal - Release 1.18
+    Increase maximun baudrate to 921600
+
+2023-07-29 - Phil Randal - Release 1.17
+    Increase maximun baudrate to 460800 (Issue #18)
+
+2021-08-17 - Phil Randal - Release 1.16
+    Fix parsing of --port parameter so it now correctly overrides the gpsctl.conf setting
+    
+2021-08-10 - Phil Randal - Release 1.15
+    Change --reset semantics from hot start to cold start
+
+2021-08-10 - Phil Randal - Release 1.14
+    Removed the --test function as that relied on the unsupported wiringPi library and all my attempts to code alternatives were unsuccessful
+
+2020-10-20 - Phil Randal - Release 1.13
+    Added After=network-online.target to ublox-init.service
+    This gives me reliable baud rate autodetection at startup
+    Minor patch to cJSON.c, not needed by us but who knows who borrows what from where
+
+2020-10-18 - Phil Randal - Release 1.12
+    Increased --autobaud synchronisation timeout from 3 to 4 seconds
+
+2020-10-18 - Phil Randal - Release 1.11
+    Increased --autobaud synchronisation timeout from 1.5 to 3 seconds
+
+2020-10-18 - Phil Randal - Release 1.10b
+    Added configurable parameters to gpsctl in ublox-init.service
+    Set parameters in /etc/default/gpstl, e.g.
+        PARAMS=-q --configure_for_timing
+
+2020-09-07 - Phil Randal - Release 1.10
+    Added gpsctl.conf.ublox which matches the ublox config after gpsctl --reset
+    Added NMEA GGA config to gpsctl -Q config output
+
+2020-09-03 - Phil Randal
+    Update to cJSON 1.7.14
+
+2020-07-17 - Phil Randal
+    Fix possible null pointer dereference in iniparser.c
+
+2020-06-21 - Phil Randal - Release 1.9
+    Set configure-rv3028.sh as executable
+    Reduce number of characters from 50 to 25 in baud rate autodetection
+
+2020-06-21 - Phil Randal - Release 1.8
+    Run stty in ublox-init.service to fix startup glitches
+    Add configure-rv3028.sh to configure the RTC on newer Uputronics GPS Hats
+
+2020-05-16 - Phil Randal
+    Update to cJSON 1.7.13
+
+2019-07-20 - Phil Randal - Release 1.7
+    Allow BeiDou and Glonass to co-exist as long as neither GPS nor Galileo are enabled
+
+2019-07-20 - Phil Randal - Release 1.6
+    Add "prefer beidou to glonass if both enabled" option in
+       [gpsctl] config file section.  Defaults to 'no'.
+       So if you accidentally try to enable both, you can
+       specify which one of the two will be enabled
+
+2019-07-15 - Phil Randal - Release 1.5
+    Enable NMEA 4.1 for both Beidou and Galileo
+
+2019-05-25 - Phil Randal - Release 1.4
+    Changed default gpsctl.conf to match original program's apart from
+        C/No threshold reduced to 20 dBHz
+
+2019-05-24 - Phil Randal
+    Reformat gpsctl.c and ublox.c to get rid of irritating whitespace
+    Update to cJSON 1.7.12
+    Added MIT LICENSE file
+
+2019-05-07 - Phil Randal - Release 1.3
+    Full reporting of enabled / disabled NMEA messages
+    Default to NMEA versioning in x.y format
+
+2019-05-07 - Phil Randal
+    Minor bug fixes to iniparser
+    Turn off debug symbols in gpsctl executable
+
+2019-05-06 - Phil Randal
+    Minor change to NMEA version reporting to make it consistent
+
+2019-05-01 - Phil Randal - Release 1.2
+    Fix iniparser config dump code to correctly quote values containing ';' and '#'
+    Allow non boolean option for nmea:enabled to leave current setting undisturbed
+
+2019-05-01 - Phil Randal - Release 1.1
+
+2019-04-29 - Phil Randal
+    Turn xxRMC on by default in the example gpsctl.conf file
+
+2019-04-28 - Phil Randal
+    Replace ciniparser with iniparser (from my own fork)
+
+2019-04-26 - Phil Randal - Release 1.0
+    Add defaults for "verbosity" and "sync method" to gpsctl.conf
+    Both can be overridden on the command line
+    Add nmea enabled option to config file
+
+2019-04-26 - Phil Randal - Release 0.9:
+    Add --satellites option (same as --galileo, which is now deprecated)
+    Force NMEA version 41 or higher if Galileo enabled
+
+2019-04-26 - Phil Randal - Release 0.8:
+    Add enabling / disabling NMEA sentences, timing and navigation engine config parameters to gpsctl.conf
+
+2019-04-25 - Phil Randal - Release 0.7:
+    Add /etc/gpsctl.conf file supporting satellite and nmea version configuration
+
+2019-04-23 - Phil Randal
+    Add ciniparser into the mix for future gpsctl.conf file parsing
+
+2019-04-18 - Phil Randal
+    Refactor some of the code
+    Report Fix Date and time in ISO 8601 format (yyyy-mm-dd hh:mm:ss)
+
+2019-04-17 - Phil Randal - Release 0.6:
+    Updated cJSON from version 1.6.0 to 1.7.11
+
+2019-04-15 - Phil Randal:
+    Added --galileo option to enable Galileo Satellites and NMEA 4.1 separately (implied by --configure_for_timing)
+    Relaxed satellite fix constraints so I could actually get a fix using active GPS antenna
+    Disabled NMEA RMC, VTG, GSA, GSV, GLL, GGA and enabled ZDA for use with NTP driver 20 option 8
+    Fixed parsing of --port option to actually pass the specified port parameter
+    Changed version number to 0.6
