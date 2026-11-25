@@ -1,0 +1,7 @@
+autobaud ascii-nmea-115200 : ascii 9600 : 115200 nmea : BAUD 115200
+autobaud nmea-nmea-460800 : nmea 9600 : 460800 nmea : BAUD 460800
+autobaud ubx-ubx-230400 : ubx 9600 : 230400 ubx : BAUD 230400
+autobaud ubx-ubx-921600-first-try : ubx 9600 : 921600 ubx : BAUD 921600
+autobaud ascii-nmea-below-min : ascii 115200 : 57600 nmea : FAIL
+autobaud nmea-sync-on-ubx-only-receiver : nmea 460800 : 115200 ubx : FAIL
+autobaud ascii-sync-on-ubx-only-receiver : ascii 460800 : 115200 ubx : FAIL

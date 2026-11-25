@@ -1,0 +1,12 @@
+[package]
+name = "gpsctl-rs"
+version = "0.1.0"
+edition = "2021"
+description = "A std-only Rust port of gpsctl, a u-blox GPS control tool"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+opt-level = 2
+strip = true
