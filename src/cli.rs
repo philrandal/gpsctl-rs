@@ -16,7 +16,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 pub const NAME: &str = "gpsctl";
-pub const VERSION: &str = "1.42";
+pub const VERSION: &str = "2.00";
 
 type Chain = Vec<String>;
 

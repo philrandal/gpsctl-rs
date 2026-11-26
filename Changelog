@@ -1,25 +1,19 @@
-Unreleased - Phil Randal and Claude (ported from the C program's unreleased changes)
-    $*00 can declare false NMEA sync
-    fixedAltVarM2 decoded as signed
-    Negative --echo seconds accepted
-    fix_is_3d excludes fixType 4
-    Unconsumed command-line words are silently ignored
-    Fix the unexpected-argument check: it never fired
-    The Rust port has all of the above; "gpsctl -e 5" and other leftover words are now refused as in C
-
-2026-11-25 - Phil Randal and Claude - Release 1.42 (first release of the Rust port)
+2026-11-26 - Phil Randal and Claude - Release 2.00 (first release of the Rust port)
     Rust conversion of gpsctl: a std-only Rust library and gpsctl program with the same options, configuration file,
-        output, JSON and exit status as release 1.42 of the C program (the version it reports).  Its behaviour was
-        checked against the real C code (golden data from the C functions, and 101 command-line scenarios run
+        output, JSON and exit status as release 2.00 of the C program (the version it reports).  Its behaviour was
+        checked against the real C code (golden data from the C functions, and 112 command-line scenarios run
         against both programs and a fake receiver, with identical output and identical frames sent), and the main
         options were run on a real u-blox M8.
     Differences from the C program: the --test (PPS pin) option is not ported (the C program no longer has it);
         --reset is not retried after the port hangs up (the C program retries every action once); the environment
         variable GPSCTL_CONF can name a different configuration file than /etc/gpsctl.conf.
     build.sh builds the aarch64 (64-bit Raspberry Pi) binary; the README lists the Debian prerequisites.
+    Includes the C program's fixes of 2026-11-25: $*00 can no longer declare false NMEA sync; fixedAltVarM2 is
+        decoded as unsigned; negative --echo seconds are refused; fix_is_3d includes fixType 4; unconsumed
+        command-line words (such as "-e 5") are refused
 
 Everything below is the Changelog of the C program (https://github.com/philrandal/gpsctl), which this port follows.
-The Rust port's release numbers follow the C release it matches.
+The Rust port's release numbers follow the C release it matches (its first release is 2.00).
 
 2026-11-25 - Phil Randal, DeepSeek and Claude - Release 1.42
     Removed the commented-out PPS signal test (--test) and its wiringPi references: wiringPi is deprecated and the option was already disabled

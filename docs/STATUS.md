@@ -1,6 +1,6 @@
 # gpsctl Rust port: status and findings (consolidated 2026-11-25)
 
-Rust port of gpsctl (std-only), this repository. The C side is philrandal/gpsctl; the Rust port is level with C master 7fe0682 (release 1.42). (Moved here from the project notes, 2026-11-25.)
+Rust port of gpsctl (std-only), this repository. The C side is philrandal/gpsctl; the Rust port is level with C release 2.00. (Moved here from the project notes, 2026-11-25.)
 
 ## Current state (2026-11-24/25)
 - 76 tests pass; `c-golden/compare_cli.py` (C binary built from the C head vs Rust): 112 of 112 scenarios identical (stdout, exit status, frames sent) at default verbosity and at -vv (the -v run was last done with 101 scenarios).
