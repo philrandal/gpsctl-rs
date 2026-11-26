@@ -51,6 +51,12 @@ pub fn get_version<T: Transport>(u: &mut Ubx<T>) -> Result<mon_ver::Version, Cha
     Ok(mon_ver::decode(&body))
 }
 
+/// Best effort, for the actions that change the configuration: ask the receiver for its version and warn if it is
+/// newer than any u-blox 8.  A receiver that doesn't answer, or has no protocol version, is not mentioned.
+pub fn warn_if_not_m8<T: Transport>(u: &mut Ubx<T>) {
+    if let Ok(v) = get_version(u) { v.warn_if_not_m8(); }
+}
+
 pub fn get_satellites<T: Transport>(u: &mut Ubx<T>) -> Result<Vec<nav_sat::Satellite>, Chain> {
     let body = u.poll(nav_sat::CLASS, nav_sat::ID, &[], NAV_SAT_MAX_MS).map_err(|e| poll_chain(vec![], e))?;
     let mut sats = nav_sat::decode(&body).map_err(|e| size_error("NAV-SAT", e.0))?;

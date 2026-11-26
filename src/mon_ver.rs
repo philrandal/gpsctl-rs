@@ -19,6 +19,37 @@ pub struct Version {
     pub extensions: Vec<String>,
 }
 
+/// u-blox 8 receivers report protocol versions up to 23; anything higher is a newer generation that gpsctl was not
+/// written for.
+pub const LAST_M8_PROTOCOL_MAJOR: u32 = 23;
+
+impl Version {
+    /// The major protocol version in the extensions ("PROTVER=18.00" gives 18), if there is one.
+    pub fn protocol_major(&self) -> Option<u32> {
+        for ext in &self.extensions {
+            let Some(at) = ext.find("PROTVER") else { continue };
+            let rest = ext[at + "PROTVER".len()..].trim_start_matches(|c| c == '=' || c == ' ');
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() { return digits.parse().ok(); }
+        }
+        None
+    }
+
+    /// Says once per run, on stderr, that the receiver is newer than any u-blox 8 (gpsctl is written and tested for
+    /// the M8; later generations are configured differently).
+    pub fn warn_if_not_m8(&self) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if let Some(major) = self.protocol_major() {
+            if major > LAST_M8_PROTOCOL_MAJOR && !WARNED.swap(true, Ordering::Relaxed) {
+                eprintln!("Warning: this receiver reports protocol version {major}, which is newer than any u-blox 8 (up to {LAST_M8_PROTOCOL_MAJOR}).");
+                eprintln!("         gpsctl is written and tested for the u-blox 8, so some settings may not apply to it");
+                eprintln!("         (u-blox 9 and later receivers use a different configuration interface).");
+            }
+        }
+    }
+}
+
 fn copy_body_string(body: &[u8], offset: usize, max_len: usize) -> String {
     let avail = body.len().saturating_sub(offset);
     let limit = avail.min(max_len);
@@ -40,6 +71,21 @@ pub fn decode(body: &[u8]) -> Version {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn version_with(ext: &[&str]) -> Version {
+        Version { software: String::new(), hardware: String::new(), extensions: ext.iter().map(|s| s.to_string()).collect() }
+    }
+
+    #[test]
+    fn protocol_major_is_read_from_the_extensions() {
+        assert_eq!(version_with(&["FWVER=SPG 3.01", "PROTVER=18.00"]).protocol_major(), Some(18));
+        assert_eq!(version_with(&["PROTVER=32.00"]).protocol_major(), Some(32));
+        assert_eq!(version_with(&["PROTVER 23"]).protocol_major(), Some(23));
+        assert_eq!(version_with(&["FWVER=SPG 3.01"]).protocol_major(), None);
+        assert_eq!(version_with(&["PROTVER=x"]).protocol_major(), None);
+        assert_eq!(version_with(&[]).protocol_major(), None);
+        assert!(32 > LAST_M8_PROTOCOL_MAJOR && 23 <= LAST_M8_PROTOCOL_MAJOR);
+    }
 
     const GOLDEN: &str = include_str!("../c-golden/golden_monver.txt");
 

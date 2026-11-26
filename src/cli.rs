@@ -654,7 +654,7 @@ fn action_query(s: &mut Session) -> Result<(), Chain> {
     let u = s.u.as_mut().unwrap();
     let text = match s.cd.query {
         Query::Fix => queries::get_fix(u).map(|f| queries::fix_text(&f, json)).map_err(|c| wrap("Problem obtaining fix from GPS", c)),
-        Query::Version => queries::get_version(u).map(|v| queries::version_text(&v, json)).map_err(|c| wrap("Problem obtaining version information from GPS", c)),
+        Query::Version => queries::get_version(u).map(|v| { v.warn_if_not_m8(); queries::version_text(&v, json) }).map_err(|c| wrap("Problem obtaining version information from GPS", c)),
         Query::Satellites => queries::get_satellites(u).map(|v| queries::satellites_text(&v, json)).map_err(|c| wrap("Problem obtaining satellites information from GPS", c)),
         Query::Config => queries::get_config(u).map(|c| queries::config_text(&c, json)).map_err(|c| wrap("Problem obtaining configuration information from GPS", c)),
     }
@@ -702,6 +702,7 @@ fn action_factory_reset(s: &mut Session) -> Result<(), Chain> {
 fn action_timing(s: &mut Session) -> Result<(), Chain> {
     sync_and_apply_nmea(s)?;
     let mut warn = Vec::new();
+    queries::warn_if_not_m8(s.u.as_mut().unwrap());
     let verbosity = s.cd.verbosity;
     let r = commands::config_for_timing_say(s.u.as_mut().unwrap(), &s.cfg, &mut warn, &mut |l, t| { if verbosity >= l as i32 { println!("{t}"); } });
     print_warnings(s, &warn);
@@ -711,6 +712,7 @@ fn action_timing(s: &mut Session) -> Result<(), Chain> {
 fn action_satellites(s: &mut Session) -> Result<(), Chain> {
     sync_and_apply_nmea(s)?;
     let mut warn = Vec::new();
+    queries::warn_if_not_m8(s.u.as_mut().unwrap());
     let verbosity = s.cd.verbosity;
     let r = commands::config_satellites_say(s.u.as_mut().unwrap(), &s.cfg, &mut warn, &mut |l, t| { if verbosity >= l as i32 { println!("{t}"); } });
     print_warnings(s, &warn);

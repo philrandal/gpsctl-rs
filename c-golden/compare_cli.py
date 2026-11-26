@@ -132,6 +132,14 @@ S("double dash", P + ["--", "-Q", "version"]); S("non-option args", P + ["foo", 
 S("extra word", P + ["foo"]); S("echo with space", P + ["-e", "1"]); S("words after dash dash", P + ["foo", "--", "bar"])
 S("extra word with query", P + ["-Q", "version", "foo"], ); S("extra word vv", P + ["-vv", "-Q", "version", "foo"])
 S("extra word and conflict", P + ["foo", "-q", "-v"]); S("version with extra", P + ["-V", "foo"]); S("help with extra", P + ["--help", "foo"])
+m9ver = padded("EXT CORE 4.04 (7f89f7)", 30) + padded("00190000", 10) + padded("FWVER=SPG 4.04", 30) + padded("PROTVER=32.00", 30) + padded("GPS;GLO;GAL;BDS", 30)
+nover = padded("ROM CORE 3.01 (107888)", 30) + padded("00080000", 10) + padded("FWVER=SPG 3.01", 30)
+M9 = {**KEYS, "0a04": m9ver}
+S("m9 version", P + ["-Q", "version"], M9); S("m9 version json", P + ["-j", "-Q", "version"], M9); S("m9 version vv", P + ["-vv", "-Q", "version"], M9)
+S("m9 satellites", P + ["--satellites"], M9); S("m9 galileo vv", P + ["--galileo", "-vv"], M9); S("m9 timing", P + ["--configure_for_timing"], M9)
+S("m9 timing then version", P + ["--configure_for_timing", "-Q", "version"], M9)
+S("no protver satellites", P + ["--satellites"], {**KEYS, "0a04": nover}); S("no protver version", P + ["-Q", "version"], {**KEYS, "0a04": nover})
+S("silent monver satellites", P + ["--satellites"], {**KEYS, "0a04": b"-"})
 S("negative echo", P + ["--echo=-1"]); S("negative echo vv", P + ["-vv", "--echo=-1"]); S("negative echo short", P + ["-e=-5"])
 S("not a terminal", ["-p", "/dev/null"]); S("no such port", ["-p", "/dev/nonexistent"])
 
@@ -142,6 +150,7 @@ for name, args, keys, stateful, env in scen:
     a = run(C, args, env, keys, stateful)
     b = run(RUST, args, env, keys, stateful)
     same = a[:4] == b[:4]
+    if os.environ.get("SHOW_STDERR") and a[2]: print("  C stderr:", repr(a[2]))
     print(("ok   " if same else "DIFF ") + name + f"   (exit {a[0]}/{b[0]}, {a[4]:.1f}s/{b[4]:.1f}s)", flush=True)
     if not same:
         fails += 1

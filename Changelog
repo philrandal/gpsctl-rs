@@ -1,3 +1,9 @@
+Unreleased - Phil Randal and Claude
+    A warning on stderr when the receiver reports a UBX protocol version newer than any u-blox 8 (above 23), as in the C
+        program: gpsctl is written and tested for the M8, so some settings may not apply to u-blox 9 and later
+        receivers.  Given before a version query and before --satellites, --galileo and --configure_for_timing
+    README says which receivers gpsctl is written for
+
 2026-11-26 - Phil Randal and Claude - Release 2.00 (first release of the Rust port)
     Rust conversion of gpsctl: a std-only Rust library and gpsctl program with the same options, configuration file,
         output, JSON and exit status as release 2.00 of the C program (the version it reports).  Its behaviour was

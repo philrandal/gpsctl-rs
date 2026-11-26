@@ -16,6 +16,14 @@ was written to make a [stratum 1 NTP server](https://www.endruntechnologies.com/
 the receiver up for accurate timing (stationary mode, the satellite systems you want, ZDA output, time pulse
 settings) and saves the result.
 
+## Which receivers?
+gpsctl is written and tested for the u-blox 8 (M8) generation, which reports a UBX protocol version up to 23 (the
+author's module reports 18). Newer generations (u-blox 9 and later, protocol 27 and up) are configured with a different,
+key-based interface that gpsctl does not use, so some of its settings may not apply to them. If a newer receiver is
+detected, gpsctl says so on stderr before it queries the version or changes the satellites or timing configuration, and
+carries on. The restriction on using BeiDou and GLONASS together (see "Configuration file") is a limit of the M8, not of
+newer receivers; gpsctl does not yet know how to lift it for them.
+
 ## What does it do?
 Functions that work for any GPS streaming NMEA over a serial port:
 * Echoes NMEA data to stdout.
@@ -297,7 +305,7 @@ An example which configures for Galileo satellites:
     User configurable delay = 0
 
 ## Status and testing
-See [docs/STATUS.md](docs/STATUS.md): 76 unit tests; a comparison against the real C program in 112 command-line
+See [docs/STATUS.md](docs/STATUS.md): 77 unit tests; a comparison against the real C program in 122 command-line
 scenarios (identical output and identical frames sent to a fake receiver); the main options run on a real u-blox M8
 (protocol 18) on a Raspberry Pi UART. Not yet run on real hardware: the cross-compile step of `build.sh`, the
 listen-first autobaud pass, UTC standards 5/8/9. The [Changelog](Changelog) includes the C program's history.
