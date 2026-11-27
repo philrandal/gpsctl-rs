@@ -109,8 +109,51 @@ compares them. `cargo test` itself needs none of this (the golden files are incl
 - Install: `sudo install -m 755 dist/gpsctl-aarch64-unknown-linux-gnu /usr/local/bin/gpsctl`.
 
 ### Start-up at boot
-`etc/systemd/system/ublox-init.service` runs gpsctl (up to three times, 15 seconds apart) before gpsd/ntpd start,
+`etc/systemd/system/ublox-init.service` runs gpsctl (up to three times, 15 seconds apart) before chrony and gpsd start,
 with `PARAMS` taken from `/etc/default/gpsctl` (an example is in `etc/default/gpsctl`).
+
+## A stratum 1 server with chrony and gpsd
+`etc/` holds a working set of files for a Raspberry Pi stratum 1 NTP server: a u-blox M8 on `/dev/ttyAMA0` with its
+PPS signal on `/dev/pps0`, gpsd reading both, and chrony as the time daemon.  They have been run on a Raspberry Pi 3B
+with Raspberry Pi OS (NetworkManager); other setups may need adjusting.
+
+| file | install to | what it does |
+|---|---|---|
+| `etc/systemd/system/ublox-init.service` | `/etc/systemd/system/` | runs gpsctl at boot, before chrony and gpsd, with options from `/etc/default/gpsctl` |
+| `etc/systemd/system/chrony.service.d/wait-for-network.conf` | `/etc/systemd/system/chrony.service.d/` | starts chrony after `network-online.target` |
+| `etc/systemd/system/gpsd.service.d/override.conf` | `/etc/systemd/system/gpsd.service.d/` | starts gpsd after chrony |
+| `etc/systemd/system/ntp-hw-tune.service` | `/etc/systemd/system/` | sets the CPU governor to `performance` and turns EEE off on `eth0` (ignored where EEE is unsupported, e.g. the Pi 3B) |
+| `etc/chrony/chrony.conf` | `/etc/chrony/chrony.conf` | chrony configuration for the GPS and PPS sources |
+
+Boot order is `ublox-init`, then `chrony`, then `gpsd`.  gpsd must start after chrony because it connects to the SOCK
+refclock sockets that chrony creates.  `After=network-online.target` only waits if a wait-online service is
+enabled (`NetworkManager-wait-online` on Raspberry Pi OS, or `systemd-networkd-wait-online`).
+
+To install:
+
+    sudo cp etc/systemd/system/*.service /etc/systemd/system/
+    sudo cp -r etc/systemd/system/*.service.d /etc/systemd/system/
+    sudo cp etc/chrony/chrony.conf /etc/chrony/chrony.conf
+    sudo systemctl daemon-reload
+    sudo systemctl enable ublox-init ntp-hw-tune
+    sudo reboot
+
+`ntp-hw-tune` needs `ethtool` installed.  `gpsd` itself is configured in `/etc/default/gpsd`; the author runs it with
+`--nowait --badtime --readonly --speed 115200 /dev/ttyAMA0 /dev/pps0`.
+
+### How `chrony.conf` is arranged
+* Two gpsd refclocks: the NMEA time over `/var/run/chrony.clk.ttyAMA0.sock` (`refid GPS`, `noselect`) only gives the
+  second; the PPS edge over `/var/run/chrony.pps0.sock` (`refid PPS`, `lock GPS`, `prefer`) gives the precision.
+* Network servers stay in the configuration as a cross-check.  `trust` is deliberately not set on the PPS source:
+  with it, chrony excludes the network servers (they show as `^?`) instead of just not combining them (`^-`).
+* `local stratum 10` keeps the server answering if neither GPS nor network is available.
+* `leapseclist /usr/share/zoneinfo/leap-seconds.list` supplies leap seconds.  `leapsectz right/UTC` is not used
+  because chrony rejected that zone on Raspberry Pi OS ("failed leap second check").  The list comes with the
+  `tzdata` package, so normal upgrades keep it current.
+* `hwtimestamp`, `lock_all` and `sched_priority 10` reduce timing jitter on a lightly loaded machine.
+
+A healthy `chronyc sources` shows the PPS source selected (`#*`) with an offset of a few hundred nanoseconds or
+less, and the network servers as `^-`.
 
 ## Usage
 
@@ -317,7 +360,7 @@ listen-first autobaud pass, UTC standards 5/8/9. The [Changelog](Changelog) incl
 | `src/` | the library: UBX/NMEA messages, serial layer, synchronizers, commands, config, CLI (`cli.rs`, `queries.rs`) |
 | `src/bin/gpsctl.rs` | the `gpsctl` program |
 | `examples/nmea_tool.rs` | older diagnostic tool (`cargo run --example nmea_tool -- --help`) |
-| `etc/` | example configuration files and the systemd unit |
+| `etc/` | example configuration files: gpsctl, chrony, and the systemd units and drop-ins |
 | `c-golden/` | golden data produced by the real C code, and the C-versus-Rust comparison scripts |
 | `tools/fake_m8.py` | a fake receiver on a pty, for trying the tool without hardware |
 | `docs/STATUS.md` | status, verification and findings |
