@@ -1,8 +1,8 @@
-<h1 align="center"><b>gpsctl-rs 2.00</b></h1>
+<h1 align="center"><b>gpsctl-rs 2.1.0</b></h1>
 
 A Rust port of [gpsctl](https://github.com/philrandal/gpsctl), a utility for configuring and querying u-blox GPS
 receivers from a Raspberry Pi (or any Linux host) over a serial port. It has the same options, configuration file,
-output, JSON and exit status as release 2.00 of the C program, and uses only the Rust standard library (no crates).
+output, JSON and exit status as release 2.1.0 of the C program, and uses only the Rust standard library (no crates).
 
 ## What is gpsctl?
 *gpsctl* is a utility for Raspberry Pi computers using a u-blox GPS board. The original author's rig was a
@@ -404,6 +404,13 @@ listen-first autobaud pass, UTC standards 5/8/9. The [Changelog](Changelog) incl
 > SOFTWARE.
 
 This port is also released under the MIT licence (see `LICENSE`).
+
+## Version numbers
+From release 2.1.0, gpsctl-rs uses [semantic versioning](https://semver.org/), `MAJOR.MINOR.PATCH`: the major number
+changes when options, configuration settings, output or exit status change in a way that could break existing use, the
+minor number when something is added in a compatible way (a new option or setting, say), and the patch number for bug
+fixes only.  Earlier releases (up to 2.00) used two-part numbers; 2.00 corresponds to 2.0.0.  It uses the same number as the C release
+it matches ([gpsctl](https://github.com/philrandal/gpsctl)).
 
 ## History
 The original *gpsctl* was written by Tom Dilatush. Phil Randal forked it, adding the configuration file,

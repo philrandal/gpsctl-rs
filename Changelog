@@ -24,7 +24,7 @@ Unreleased - Phil Randal and Claude
         command-line words (such as "-e 5") are refused
 
 Everything below is the Changelog of the C program (https://github.com/philrandal/gpsctl), which this port follows.
-The Rust port's release numbers follow the C release it matches (its first release is 2.00).
+The Rust port's release numbers follow the C release it matches (its first release is 2.00); from 2.1.0 both use semantic versioning.
 
 2026-11-25 - Phil Randal, DeepSeek and Claude - Release 1.42
     Removed the commented-out PPS signal test (--test) and its wiringPi references: wiringPi is deprecated and the option was already disabled
