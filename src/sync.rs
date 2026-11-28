@@ -127,8 +127,9 @@ pub fn sync<T: Transport>(u: &mut Ubx<T>, method: SyncMethod, max_ms: u64, baud:
 }
 
 /// Try each rate from 921600 down to `min_baud`; the first that synchronizes is returned and left set on the host.
-pub fn auto_baud<T: Transport>(u: &mut Ubx<T>, min_baud: u32, method: SyncMethod, mut tried: impl FnMut(u32)) -> Result<u32, String> {
-    for &baud in AUTOBAUD_RATES.iter().take_while(|&&b| b >= min_baud) {
+pub fn auto_baud<T: Transport>(u: &mut Ubx<T>, min_baud: u32, max_baud: u32, first_baud: u32, method: SyncMethod,
+                               mut tried: impl FnMut(u32)) -> Result<u32, String> {
+    for baud in auto_baud_order(min_baud, max_baud, first_baud) {
         tried(baud);
         u.set_baud(baud).map_err(|e| format!("problem trying to set baud rate to {baud}: {e}"))?;
         u.t.wait_quiet(crate::serial::QUIET_LINE, crate::serial::QUIET_LINE_MAX)
@@ -137,7 +138,16 @@ pub fn auto_baud<T: Transport>(u: &mut Ubx<T>, min_baud: u32, method: SyncMethod
             return Ok(baud);
         }
     }
-    Err(format!("could not synchronize at any baud rate from 921600 to {min_baud}"))
+    Err(format!("could not synchronize at any baud rate from {max_baud} to {min_baud}"))
+}
+
+/// The order autoBaudRate() tries rates in: `first_baud` first (if it is above 0, whether or not it is inside the
+/// range), then the standard rates from `max_baud` down to `min_baud`, leaving out `first_baud` (already tried).
+pub fn auto_baud_order(min_baud: u32, max_baud: u32, first_baud: u32) -> Vec<u32> {
+    let mut order = Vec::new();
+    if first_baud > 0 { order.push(first_baud); }
+    order.extend(AUTOBAUD_RATES.iter().copied().filter(|&b| b <= max_baud && b >= min_baud && b != first_baud));
+    order
 }
 
 #[cfg(test)]
@@ -169,7 +179,7 @@ mod tests {
             let kind = if r[1] == "nmea" { Kind::Nmea } else { Kind::Ubx };
             let mut u = Ubx::new(Sim::at_baud(r[0].parse().unwrap(), kind));
             let mut tried = vec![];
-            let got = match auto_baud(&mut u, min, method, |b| tried.push(b)) {
+            let got = match auto_baud(&mut u, min, 921600, 0, method, |b| tried.push(b)) {
                 Ok(b) => format!("BAUD {b}"),
                 Err(_) => "FAIL".to_string(),
             };
@@ -189,7 +199,7 @@ mod tests {
     fn auto_baud_tries_highest_first() {
         let mut u = Ubx::new(Sim::at_baud(57600, Kind::Nmea));
         let mut tried = vec![];
-        assert_eq!(auto_baud(&mut u, 9600, SyncMethod::Nmea, |b| tried.push(b)), Ok(57600));
+        assert_eq!(auto_baud(&mut u, 9600, 921600, 0, SyncMethod::Nmea, |b| tried.push(b)), Ok(57600));
         assert_eq!(tried, vec![921600, 460800, 230400, 115200, 57600]);
     }
 
@@ -242,12 +252,12 @@ mod tests {
         // autobaud with the passive method finds the rate, from the top, without sending
         let mut u = Ubx::new(Sim::at_baud(9600, Kind::Nmea));
         let mut tried = vec![];
-        assert_eq!(auto_baud(&mut u, 9600, SyncMethod::Passive, |b| tried.push(b)), Ok(9600));
+        assert_eq!(auto_baud(&mut u, 9600, 921600, 0, SyncMethod::Passive, |b| tried.push(b)), Ok(9600));
         assert_eq!(tried, vec![921600, 460800, 230400, 115200, 57600, 38400, 19200, 9600]);
         assert_eq!(u.t.bytes_written, 0);
         // a receiver that says nothing (UBX only, NMEA off) is not heard at any rate
         let mut u = Ubx::new(Sim::at_baud(9600, Kind::Ubx));
-        assert!(auto_baud(&mut u, 9600, SyncMethod::Passive, |_| {}).is_err());
+        assert!(auto_baud(&mut u, 9600, 921600, 0, SyncMethod::Passive, |_| {}).is_err());
         assert_eq!(u.t.bytes_written, 0);
     }
 
@@ -257,5 +267,35 @@ mod tests {
         u.t.host_baud = 921600;
         assert_eq!(sync(&mut u, SyncMethod::Passive, 4000, 921600), Ok(false));
         assert!(u.t.clock <= Duration::from_millis(PASSIVE_LISTEN_MS + 50), "listened for {:?}", u.t.clock);
+    }
+
+    #[test]
+    fn auto_baud_order_puts_the_expected_rate_first_and_respects_the_range() {
+        assert_eq!(auto_baud_order(9600, 921600, 0)[..4], [921600, 460800, 230400, 115200]);
+        assert_eq!(auto_baud_order(9600, 921600, 0).last(), Some(&9600));
+        assert_eq!(auto_baud_order(9600, 921600, 115200)[..4], [115200, 921600, 460800, 230400]);
+        assert_eq!(auto_baud_order(9600, 921600, 115200).iter().filter(|&&b| b == 115200).count(), 1);
+        assert_eq!(auto_baud_order(9600, 115200, 0), vec![115200, 57600, 38400, 19200, 9600]);
+        assert_eq!(auto_baud_order(38400, 115200, 9600), vec![9600, 115200, 57600, 38400]); // first rate outside the range
+        assert_eq!(auto_baud_order(115200, 115200, 0), vec![115200]);
+    }
+
+    #[test]
+    fn auto_baud_tries_the_first_rate_first_and_stops_there() {
+        let mut u = Ubx::new(Sim::at_baud(115200, Kind::Nmea));
+        let mut tried = vec![];
+        assert_eq!(auto_baud(&mut u, 9600, 921600, 115200, SyncMethod::Passive, |b| tried.push(b)), Ok(115200));
+        assert_eq!(tried, vec![115200]);
+        // a miss falls through to the rest of the range
+        let mut u = Ubx::new(Sim::at_baud(57600, Kind::Nmea));
+        let mut tried = vec![];
+        assert_eq!(auto_baud(&mut u, 9600, 921600, 115200, SyncMethod::Passive, |b| tried.push(b)), Ok(57600));
+        assert_eq!(tried, vec![115200, 921600, 460800, 230400, 57600]);
+        // the maximum is respected, and the failure message names the range
+        let mut u = Ubx::new(Sim::at_baud(460800, Kind::Nmea));
+        let mut tried = vec![];
+        let e = auto_baud(&mut u, 9600, 115200, 0, SyncMethod::Passive, |b| tried.push(b)).unwrap_err();
+        assert_eq!(tried, vec![115200, 57600, 38400, 19200, 9600]);
+        assert_eq!(e, "could not synchronize at any baud rate from 115200 to 9600");
     }
 }

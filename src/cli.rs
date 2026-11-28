@@ -67,7 +67,7 @@ fn wrap(outer: &str, mut cause: Chain) -> Chain {
 enum Arg { None, Optional, Required }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Id { Version, Usage, Help, Verbose, Quiet, Port, Json, SharedPort, Autobaud, Baud, MinBaud, Sync, FactoryReset, NewBaud, Nmea, Query, Galileo, Satellites, Timing, Save, Reset, Echo }
+enum Id { Version, Usage, Help, Verbose, Quiet, Port, Json, SharedPort, Autobaud, Baud, MinBaud, MaxBaud, Sync, FactoryReset, NewBaud, Nmea, Query, Galileo, Satellites, Timing, Save, Reset, Echo }
 
 struct Def {
     id: Id,
@@ -84,7 +84,7 @@ const fn def(id: Id, max: u32, long: &'static str, short: char, arg: Arg, arg_na
 }
 
 // (the order matters: parsing, constraint checking and the actions all run in this order)
-const DEFS: [Def; 22] = [
+const DEFS: [Def; 23] = [
     def(Id::Version, 1, "version", 'V', Arg::None, "", "display the version of this program"),
     def(Id::Usage, 1, "usage", 'U', Arg::None, "", "display a short description of this program's usage"),
     def(Id::Help, 1, "help", '?', Arg::None, "", "display this help message"),
@@ -95,10 +95,11 @@ const DEFS: [Def; 22] = [
     def(Id::SharedPort, 1, "shared_port", '\0', Arg::None, "", "allow use of a serial port that another process has open"),
     def(Id::Autobaud, 1, "autobaud", 'a', Arg::Optional, "method", "infer baud rate using ascii, nmea, ubx data (default is ubx)"),
     def(Id::Baud, 1, "baud", 'b', Arg::Required, "baud rate", "specify different host baud rate; any standard rate is allowed"),
-    def(Id::MinBaud, 1, "minbaud", 'M', Arg::Required, "baud rate", "specify minimum baud rate for autobaud (default is '9600'); any standard rate is allowed"),
+    def(Id::MinBaud, 1, "minbaud", 'M', Arg::Required, "baud rate", "specify minimum baud rate for autobaud (default is '9600', or \"autobaud minimum\" in gpsctl.conf); any standard rate is allowed"),
+    def(Id::MaxBaud, 1, "maxbaud", 'X', Arg::Required, "baud rate", "specify maximum baud rate for autobaud (default is '921600', or \"autobaud maximum\" in gpsctl.conf); any standard rate is allowed"),
     def(Id::Sync, 1, "sync", 's', Arg::Optional, "method", "synchronize using ascii, nmea, ubx data (default is ubx)"),
     def(Id::FactoryReset, 1, "factory_reset", '\0', Arg::Required, "yes", "restore the GPS to its factory defaults, erasing its saved configuration; the GPS goes back to 9600 baud"),
-    def(Id::NewBaud, 1, "newbaud", 'B', Arg::Required, "baud rate", "change the U-Blox and host baud rates to the specified standard rate"),
+    def(Id::NewBaud, 1, "newbaud", 'B', Arg::Required, "baud rate", "change the U-Blox and host baud rates to the specified standard rate (with -a, that rate is also tried first)"),
     def(Id::Nmea, 1, "nmea", 'n', Arg::Required, "yes/no", "configure whether the GPS sends NMEA data to the serial port (see \"Yes or no values\" below)"),
     def(Id::Query, 1, "query", 'Q', Arg::Required, "query type", "query the GPS for info (see \"Query types\" below)"),
     def(Id::Galileo, 1, "galileo", '\0', Arg::None, "", "configure the GPS for Galileo Satellites"),
@@ -321,6 +322,7 @@ struct ClientData {
     port: Option<String>,
     baud: u32, // 0: keep the port's present rate
     min_baud: u32,
+    max_baud: u32,
     new_baud: u32,
     nmea: i32, // -1: leave the receiver's NMEA setting alone
     json: bool,
@@ -513,13 +515,24 @@ fn print_warnings(s: &Session, warn: &[String]) {
 // ---------------------------------------------------------------------------------------------------------------
 // the actions
 
+/// What autoBaudRate() says (at -v and above) before it starts trying rates.
+fn trying_message(first_baud: u32, max_baud: u32, min_baud: u32) -> String {
+    if first_baud == 0 {
+        format!("Trying baud rates from {max_baud} to {min_baud}...")
+    } else if first_baud <= max_baud && first_baud >= min_baud {
+        format!("Trying {first_baud} baud first, then baud rates from {max_baud} to {min_baud}...")
+    } else {
+        format!("Trying {first_baud} baud first (outside that range), then baud rates from {max_baud} to {min_baud}...")
+    }
+}
+
 fn action_autobaud(s: &mut Session) -> Result<(), Chain> {
     let method = s.cd.sync_method;
     if v2!(s) { println!("Automatically determining baud rate..."); }
-    let min_baud = s.cd.min_baud;
+    let (min_baud, max_baud, first_baud) = (s.cd.min_baud, s.cd.max_baud, s.cd.new_baud);
     let u = s.u.as_mut().unwrap();
     // (C closes the port whenever autobaud fails, so the recovery step finds it unusable and reopens it)
-    if let Err(e) = u.set_baud(921600) {
+    if let Err(e) = u.set_baud(max_baud) {
         s.u = None;
         return Err(wrap("Error when setting terminal options", one(e)));
     }
@@ -534,8 +547,8 @@ fn action_autobaud(s: &mut Session) -> Result<(), Chain> {
     if method == SyncMethod::Ubx {
         if verbosity >= 2 { println!("Listening for the receiver's NMEA output first (nothing is sent)..."); }
         // (autoBaudRate() says which rates it will try, each rate as it is tried, and the one that worked)
-        if verbosity >= 1 { println!("Trying baud rates from 921600 to {min_baud}..."); }
-        match sync::auto_baud(s.u.as_mut().unwrap(), min_baud, SyncMethod::Passive, |b| {
+        if verbosity >= 1 { println!("{}", trying_message(first_baud, max_baud, min_baud)); }
+        match sync::auto_baud(s.u.as_mut().unwrap(), min_baud, max_baud, first_baud, SyncMethod::Passive, |b| {
             if verbosity >= 2 { println!("Trying {b} baud..."); }
         }) {
             Ok(b) => {
@@ -553,7 +566,7 @@ fn action_autobaud(s: &mut Session) -> Result<(), Chain> {
         }
         if found_passively.is_none() {
             // the passive pass leaves the port at some rate; start the polling sweep from the top again...
-            if let Err(e) = s.u.as_mut().unwrap().set_baud(921600) {
+            if let Err(e) = s.u.as_mut().unwrap().set_baud(max_baud) {
                 s.u = None;
                 return Err(wrap("Error when setting terminal options", one(e)));
             }
@@ -563,8 +576,8 @@ fn action_autobaud(s: &mut Session) -> Result<(), Chain> {
     let found = match found_passively {
         Some(b) => Ok(b),
         None => {
-            if verbosity >= 1 { println!("Trying baud rates from 921600 to {min_baud}..."); }
-            let r = sync::auto_baud(s.u.as_mut().unwrap(), min_baud, method, |b| {
+            if verbosity >= 1 { println!("{}", trying_message(first_baud, max_baud, min_baud)); }
+            let r = sync::auto_baud(s.u.as_mut().unwrap(), min_baud, max_baud, first_baud, method, |b| {
                 if verbosity >= 2 { println!("Trying {b} baud..."); }
             });
             if let Ok(b) = r {
@@ -820,6 +833,16 @@ pub fn run(args: &[String]) -> i32 {
         2 => SyncMethod::Nmea,
         _ => SyncMethod::Ubx,
     };
+    // getConfigBaud(): a whole number that is one of the standard rates, otherwise the default (with a warning)
+    let config_baud = |key: &str, default: u32, warn: &mut Vec<String>| -> u32 {
+        let b = cfg.int(key, default as i64, 1, i32::MAX as i64, warn);
+        if VALID_BAUDS.contains(&(b as u32)) { b as u32 } else {
+            warn.push(format!("{key} = {b} is not a valid baud rate (4800, 9600, 19200, etc.); using the default ({default})"));
+            default
+        }
+    };
+    let min_baud = config_baud("gpsctl:autobaud minimum", 9600, &mut warn);
+    let max_baud = config_baud("gpsctl:autobaud maximum", 921600, &mut warn);
     // getConfigBool("nmea:enabled", -1): yes, no, or "leave it alone" (not set, or not understood)
     let nmea = match cfg.get("nmea:enabled") {
         None => -1,
@@ -834,7 +857,7 @@ pub fn run(args: &[String]) -> i32 {
 
     let mut s = Session {
         cd: ClientData {
-            verbosity, sync_method, port: None, baud: 0, min_baud: 9600, new_baud: 0, nmea, json: false, echo_seconds: 0,
+            verbosity, sync_method, port: None, baud: 0, min_baud, max_baud, new_baud: 0, nmea, json: false, echo_seconds: 0,
             query: Query::Fix, shared_port: false, ubx_synchronized: false, nmea_applied: false,
         },
         cfg,
@@ -902,6 +925,7 @@ fn process(s: &mut Session, args: &[String]) -> Result<(), Chain> {
                 }
                 Id::Baud => s.cd.baud = parse_baud(di, arg.unwrap_or(""))?,
                 Id::MinBaud => s.cd.min_baud = parse_baud(di, arg.unwrap_or(""))?,
+                Id::MaxBaud => s.cd.max_baud = parse_baud(di, arg.unwrap_or(""))?,
                 Id::NewBaud => s.cd.new_baud = parse_baud(di, arg.unwrap_or(""))?,
                 Id::FactoryReset => {
                     if arg != Some("yes") {
@@ -946,11 +970,19 @@ fn process(s: &mut Session, args: &[String]) -> Result<(), Chain> {
             Id::Json if !present(Id::Query) => Some("-j, --json may only be specified if -Q, --query is also specified"),
             Id::Baud if present(Id::Autobaud) => Some("-b, --baud may only be specified if -a, --autobaud is NOT specified"),
             Id::MinBaud if !present(Id::Autobaud) => Some("-M, --minbaud may only be specified if -a, --autobaud is also specified"),
+            Id::MaxBaud if !present(Id::Autobaud) => Some("-X, --maxbaud may only be specified if -a, --autobaud is also specified"),
             Id::Echo if s.cd.echo_seconds < 0 => Some("-e, --echo may not be given a negative number of seconds"),
             Id::Verbose if present(Id::Quiet) => Some("-v, --verbosity d may only be specified if -q, --quiet is NOT specified"),
             _ => None,
         };
         if let Some(m) = bad { return Err(constraint_error(m)); }
+    }
+    // the autobaud range must not be empty; either end may come from gpsctl.conf or the command line, so say which...
+    if present(Id::Autobaud) && s.cd.min_baud > s.cd.max_baud {
+        return Err(constraint_error(&format!(
+            "the minimum autobaud rate ({}, from {}) is above the maximum ({}, from {})",
+            s.cd.min_baud, if present(Id::MinBaud) { "-M, --minbaud" } else { "gpsctl.conf or the default" },
+            s.cd.max_baud, if present(Id::MaxBaud) { "-X, --maxbaud" } else { "gpsctl.conf or the default" })));
     }
 
     // setup: find the port and open it

@@ -169,9 +169,10 @@ less, and the network servers as `^-`.
         --shared_port           allow use of a serial port that another process has open
     -a, --autobaud[=method]     infer baud rate using ascii, nmea, ubx data (default is ubx)
     -b, --baud <baud rate>      specify different host baud rate; any standard rate is allowed
-    -M, --minbaud <baud rate>   specify minimum baud rate for autobaud (default is '9600'); any standard rate is allowed
+    -M, --minbaud <baud rate>   specify minimum baud rate for autobaud (default is '9600', or "autobaud minimum" in gpsctl.conf); any standard rate is allowed
+    -X, --maxbaud <baud rate>   specify maximum baud rate for autobaud (default is '921600', or "autobaud maximum" in gpsctl.conf); any standard rate is allowed
     -s, --sync[=method]         synchronize using ascii, nmea, ubx data (default is ubx)
-    -B, --newbaud <baud rate>   change the U-Blox and host baud rates to the specified standard rate
+    -B, --newbaud <baud rate>   change the U-Blox and host baud rates to the specified standard rate (with -a, that rate is also tried first)
     -n, --nmea <yes/no>         configure whether the GPS sends NMEA data to the serial port (see "Yes or no values" below)
     -Q, --query <query type>    query the GPS for info (see "Query types" below)
         --galileo               configure the GPS for Galileo Satellites
@@ -211,6 +212,17 @@ less, and the network servers as `^-`.
 If a number of seconds is given to `-e` it must be attached (`-e5`, `--echo=5`); with a space (`-e 5`) the echo
 runs forever and `5` is treated as a stray argument.
 
+### Autobaud
+With `-a`, gpsctl works out the receiver's baud rate by trying the standard rates from the maximum down to the
+minimum (921600 down to 9600 unless told otherwise).  Each rate costs about 1.5 seconds when the receiver is sending
+NMEA, and more when it is not, so narrowing the range or saying where to look first saves time at every start-up:
+* `-B <rate>` together with `-a`: that rate is tried first, so a receiver that is already there is found at once.
+  The usual boot-time `-a -B 115200` finds a receiver at 115200 in about a second instead of about five.  If it is
+  not there, the rest of the range is tried as normal (`-B` still changes the receiver to that rate afterwards).
+* `-M, --minbaud` and `-X, --maxbaud` set the lowest and highest rate tried.  The defaults can be set in the
+  `[gpsctl]` section of `gpsctl.conf` as `autobaud minimum` and `autobaud maximum`; the command line overrides the file.
+  A minimum above the maximum is an error.  A `-B` rate outside the range is still tried first.
+
 ## Examples
 To autodetect the current baud rate, set the pi and u-blox module to 115200 baud, configure stationary mode, Galileo satellites, and NMEA ZDA output only, and to see what it's doing
 
@@ -230,7 +242,7 @@ always print the reason, even with `-q`.
 ## Configuration file
 The file `/etc/gpsctl.conf` (or the file named by `GPSCTL_CONF`) is read for configuration options. It is optional.
 
-The `[gpsctl]` section determines which serial port gpsctl uses, the default verbosity and the default sync method.
+The `[gpsctl]` section determines which serial port gpsctl uses, the default verbosity, the default sync method and the range of baud rates that autobaud (`-a`) tries.
 The other sections are used by `--galileo`, `--satellites` and `--configure_for_timing`, and override the defaults
 if present. Example configurations are in `etc/`: `gpsctl.conf` (the one below), `gpsctl.conf.loose` (Galileo,
 and should almost always get a fix), `gpsctl.conf.ublox` (the u-blox 8 defaults) and `gpsctl.conf.default`
@@ -262,6 +274,9 @@ An example which configures for Galileo satellites:
     # sync method: ASCII = 1, NMEA = 2, UBX = 3
     sync method = 3
     verbosity = 0
+    # the range of baud rates that -a (autobaud) tries; -M and -X on the command line override these
+    autobaud minimum = 9600
+    autobaud maximum = 921600
     # Only one of Beidou and GLONASS can be used at the same time
     # so rather than error out trying to enable both
     # choose which one to use
@@ -348,7 +363,7 @@ An example which configures for Galileo satellites:
     User configurable delay = 0
 
 ## Status and testing
-See [docs/STATUS.md](docs/STATUS.md): 77 unit tests; a comparison against the real C program in 122 command-line
+See [docs/STATUS.md](docs/STATUS.md): 79 unit tests; a comparison against the real C program in 137 command-line
 scenarios (identical output and identical frames sent to a fake receiver); the main options run on a real u-blox M8
 (protocol 18) on a Raspberry Pi UART. Not yet run on real hardware: the cross-compile step of `build.sh`, the
 listen-first autobaud pass, UTC standards 5/8/9. The [Changelog](Changelog) includes the C program's history.
