@@ -271,7 +271,7 @@ fn run() -> Result<(), String> {
                 Some(o) => return Err(format!("unknown sync method {o} (ascii, nmea or ubx)")) };
             let mut u = Ubx::new(open_port(&port, 921600, force, trace)?);
             println!("Trying {:?} synchronization on {port} from 921600 down to {min_baud}...", method);
-            let found = auto_baud(&mut u, min_baud, method, |b| println!("  trying {b}"))?;
+            let found = auto_baud(&mut u, min_baud, 921600, 0, method, |b| println!("  trying {b}"))?;
             println!("Synchronized at {found} baud ({:?} said so).", method);
             // double-check with a different question: what rate does the receiver itself say it is using?
             match poll_retry(&mut u, cfg_prt::CLASS, cfg_prt::ID, &[cfg_prt::UART_PORT_ID], 1000, 3) {
